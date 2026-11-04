@@ -1,0 +1,23 @@
+name: LX Strategic - Teste Geral
+on:
+  push:
+    paths:
+      - 'index.html'
+      - 'tests/**'
+      - '.github/workflows/test-all.yml'
+  workflow_dispatch:
+jobs:
+  qa:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Test dashboard, salas, pessoas, metas, notas, lideranças, storage, desktop e mobile
+        run: node tests/all.cjs
