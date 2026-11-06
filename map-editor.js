@@ -85,7 +85,7 @@ function init(config){if(api)return;api=config;initData();save();const surface=$
  surface.addEventListener('pointerup',e=>{if(!drag)return;const prev=drag;drag=null;if(prev.kind==='node'){if(prev.moved){save();draw()}else select(prev.id)}try{surface.releasePointerCapture(e.pointerId)}catch(x){}});
  surface.addEventListener('pointercancel',()=>{if(drag?.moved)save();drag=null});
  surface.addEventListener('wheel',e=>{e.preventDefault();zoom(view.z*(e.deltaY<0?1.08:.92))},{passive:false});
- $('mapAddIdea').onclick=()=>make('idea');$('mapAddAction').onclick=()=>make('action');$('mapAddRisk').onclick=()=>make('risk');
+ $('mapAddIdea').onclick=()=>make('idea');$('mapAddAction').onclick=()=>make('action');$('mapAddRisk').onclick=()=>make('risk');$('mapAddHire').onclick=()=>api.openNew('hire');
  $('mapConnect').onclick=()=>{if(!current()){alert('Selecione o primeiro nó.');return}connecting=selected;$('mapConnect').classList.add('primary');$('mapSaveState').textContent='Selecione outro nó para conectar'};
  $('mapZoomIn').onclick=()=>zoom(view.z*1.2);$('mapZoomOut').onclick=()=>zoom(view.z/1.2);$('mapFit').onclick=fit;
  $('mapUndo').onclick=undo;$('mapRedo').onclick=redo;$('mapRearrange').onclick=rearrange;$('mapExport').onclick=exportSVG;
