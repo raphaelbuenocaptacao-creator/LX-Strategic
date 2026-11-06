@@ -8,12 +8,13 @@ const el=(tag,attrs,parent)=>{const n=document.createElementNS(NS,tag);Object.ke
 const short=(s,n=21)=>String(s||'').slice(0,n);
 let api,selected='',connecting='',drag=null,view={x:0,y:0,z:1},undoStack=[],redoStack=[];
 const d=()=>api.get(),nodes=()=>d().mapNodes,edges=()=>d().mapEdges;
-const snap=()=>{undoStack.push(JSON.stringify({nodes:nodes(),edges:edges()}));if(undoStack.length>40)undoStack.shift();redoStack=[]};
+const state=()=>JSON.stringify({nodes:nodes(),edges:edges(),auto:d().mapAutoPopulate,hidden:d().mapHiddenIds||[]});
+const snap=()=>{undoStack.push(state());if(undoStack.length>40)undoStack.shift();redoStack=[]};
 const save=()=>{api.save();$('mapSaveState').textContent='Salvo no navegador'};
 function initData(){
- if(!Array.isArray(d().mapNodes))d().mapNodes=[];if(!Array.isArray(d().mapEdges))d().mapEdges=[];
- const n=nodes(),e=edges(),live=new Set(['lx-root']);
- const add=(id,label,type,x,y,ref)=>{live.add(id);if(!n.some(a=>a.id===id))n.push({id,label,type,x,y,ref:ref||'',color:colors[type],description:'',status:'Planejado'})};
+ if(!Array.isArray(d().mapNodes))d().mapNodes=[];if(!Array.isArray(d().mapEdges))d().mapEdges=[];if(!Array.isArray(d().mapHiddenIds))d().mapHiddenIds=[];
+ const n=nodes(),e=edges(),live=new Set(['lx-root']);const automatic=d().mapAutoPopulate!==false;const hidden=new Set(d().mapHiddenIds);
+ const add=(id,label,type,x,y,ref)=>{live.add(id);if(!automatic||hidden.has(id))return;if(!n.some(a=>a.id===id))n.push({id,label,type,x,y,ref:ref||'',color:colors[type],description:'',status:'Planejado'})};
  add('lx-root','LX STRATEGIC','central',500,310,'');
  const rooms=d().rooms||[],plans=d().plans||[],people=d().people||[],hires=d().hires||[];
  rooms.forEach((a,i)=>{const rad=(i*2*Math.PI/Math.max(2,rooms.length))-Math.PI/2;add('room:'+a.id,a.name,'room',500+260*Math.cos(rad),310+190*Math.sin(rad),a.id)});
@@ -22,6 +23,7 @@ function initData(){
  hires.forEach((a,i)=>{const par=n.find(v=>v.id==='room:'+a.roomId)||n[0];const rad=i*2.39996+.8;add('hire:'+a.id,a.name,'hire',par.x+220*Math.cos(rad),par.y+190*Math.sin(rad),a.id)});
  const collections={room:rooms,plan:plans,person:people,hire:hires};
  for(let i=n.length-1;i>=0;i--){const x=n[i];if(x.ref&&!live.has(x.id)){n.splice(i,1);continue}if(x.ref){const r=collections[x.type]?.find(a=>a.id===x.ref);if(r)x.label=r.name}}
+ if(!automatic){const valid=new Set(n.map(x=>x.id));d().mapEdges=e.filter(x=>valid.has(x.from)&&valid.has(x.to)&&x.from!==x.to);return}
  const keys=new Set(e.map(x=>x.from+'>'+x.to));
  const link=(from,to)=>{if(!n.some(x=>x.id===from)||!n.some(x=>x.id===to))return;const key=from+'>'+to;if(!keys.has(key)){e.push({id:gen(),from,to});keys.add(key)}};
  rooms.forEach(x=>link('lx-root','room:'+x.id));
@@ -40,15 +42,15 @@ function inspector(){
  const n=current();$('mapInspector').hidden=!n;$('mapEmptyInspector').hidden=!!n;if(!n)return;
  const vals={mapNodeName:n.label,mapNodeType:n.type,mapNodeDesc:n.description||'',mapNodeStatus:n.status||'Planejado',mapNodeColor:n.color||colors[n.type]};
  Object.keys(vals).forEach(id=>$(id).value=vals[id]);
- $('mapNodeName').disabled=!!n.ref;$('mapNodeType').disabled=!!n.ref||n.type==='central';
- $('mapDelete').disabled=!!n.ref||n.type==='central';$('mapSource').hidden=!n.ref;
+ $('mapNodeName').disabled=false;$('mapNodeType').disabled=false;
+ $('mapDelete').disabled=false;$('mapSource').hidden=!n.ref;
  $('mapSourceInfo').textContent=n.ref?'Vinculado a cadastro existente':'Nó personalizado';
  const box=$('mapLinks');box.replaceChildren();
  edges().filter(x=>x.from===n.id||x.to===n.id).forEach(link=>{
  const other=nodes().find(x=>x.id===(link.from===n.id?link.to:link.from));if(!other)return;
  const row=document.createElement('div');row.className='map-link-row';
  const text=document.createElement('span');text.textContent=short(other.label,25);row.appendChild(text);
- const btn=document.createElement('button');btn.className='smallbtn';btn.textContent='Desconectar';btn.onclick=()=>{snap();d().mapEdges=edges().filter(x=>x.id!==link.id);save();render()};row.appendChild(btn);box.appendChild(row)
+ const btn=document.createElement('button');btn.className='smallbtn';btn.textContent='Desconectar';btn.onclick=()=>{snap();d().mapAutoPopulate=false;d().mapEdges=edges().filter(x=>x.id!==link.id);save();render()};row.appendChild(btn);box.appendChild(row)
  });
 }
 function select(id){if(connecting){if(connecting!==id&&!edges().some(x=>x.from===connecting&&x.to===id)){snap();edges().push({id:gen(),from:connecting,to:id});save()}connecting='';$('mapConnect').classList.remove('primary')}selected=id;render()}
@@ -69,14 +71,17 @@ function draw(){
  });
  $('mapNodeCount').textContent=all.length;$('mapEdgeCount').textContent=edges().length;transform();inspector();
 }
-function render(){if(!api)return;initData();draw()}
-function make(type){snap();const n={id:gen(),type,label:type==='idea'?'Nova ideia':type==='risk'?'Novo risco':'Nova ação',x:(500-view.x)/view.z,y:(315-view.y)/view.z,color:colors[type],status:'Planejado',description:'',ref:''};nodes().push(n);if(selected)edges().push({id:gen(),from:selected,to:n.id});selected=n.id;save();render();$('mapNodeName').focus();$('mapNodeName').select()}
-function update(k,v){const n=current();if(!n||((k==='label'||k==='type')&&n.ref))return;v=String(v).trim();if(k==='label'&&!v)return;snap();n[k]=v;if(k==='type'&&!n.ref)n.color=colors[v]||n.color;save();draw()}
-function deleteSelected(){const n=current();if(!n||n.ref||n.type==='central')return;if(!confirm('Excluir este nó e suas conexões?'))return;snap();d().mapNodes=nodes().filter(x=>x.id!==n.id);d().mapEdges=edges().filter(x=>x.from!==n.id&&x.to!==n.id);selected='';save();render()}
+function render(){if(!api)return;initData();draw();updatePicker()}
+function make(type){snap();d().mapAutoPopulate=false;const n={id:gen(),type,label:type==='idea'?'Nova ideia':type==='risk'?'Novo risco':'Nova ação',x:(500-view.x)/view.z,y:(315-view.y)/view.z,color:colors[type],status:'Planejado',description:'',ref:''};nodes().push(n);if(selected)edges().push({id:gen(),from:selected,to:n.id});selected=n.id;save();render();$('mapNodeName').focus();$('mapNodeName').select()}
+function update(k,v){const n=current();if(!n)return;v=String(v).trim();if(k==='label'&&!v)return;snap();n[k]=v;if(k==='type')n.color=colors[v]||n.color;save();draw()}
+function deleteSelected(){const n=current();if(!n)return;if(!confirm('Remover "'+n.label+'" apenas do mapa? O cadastro original continuará salvo.'))return;snap();d().mapAutoPopulate=false;d().mapHiddenIds.push(n.id);d().mapNodes=nodes().filter(x=>x.id!==n.id);d().mapEdges=edges().filter(x=>x.from!==n.id&&x.to!==n.id);selected='';save();render();fit()}
 function duplicate(){const n=current();if(!n)return;snap();const copy={...n,id:gen(),label:n.label+' (cópia)',type:n.ref?'idea':n.type,ref:'',x:n.x+60,y:n.y+75};nodes().push(copy);selected=copy.id;save();render()}
-function restore(raw){try{const val=JSON.parse(raw);d().mapNodes=val.nodes;d().mapEdges=val.edges;selected='';save();render()}catch(e){console.error(e)}}
-function undo(){if(!undoStack.length)return;redoStack.push(JSON.stringify({nodes:nodes(),edges:edges()}));restore(undoStack.pop())}
-function redo(){if(!redoStack.length)return;undoStack.push(JSON.stringify({nodes:nodes(),edges:edges()}));restore(redoStack.pop())}
+function restore(raw){try{const val=JSON.parse(raw);d().mapNodes=val.nodes;d().mapEdges=val.edges;d().mapAutoPopulate=val.auto;d().mapHiddenIds=val.hidden||[];selected='';save();render()}catch(e){console.error(e)}}
+function undo(){if(!undoStack.length)return;redoStack.push(state());restore(undoStack.pop())}
+function redo(){if(!redoStack.length)return;undoStack.push(state());restore(redoStack.pop())}
+function clearMap(){if(!confirm('Começar um mapa totalmente em branco? As salas, profissionais, metas e contratações NÃO serão apagados. Você poderá desfazer essa ação.'))return;snap();d().mapAutoPopulate=false;d().mapHiddenIds=[];d().mapNodes=[];d().mapEdges=[];selected='';connecting='';save();render();view={x:0,y:0,z:1};transform()}
+function addLinked(){const raw=$('mapLinkedSelect').value;if(!raw)return;const [type,...rest]=raw.split(':');const ref=rest.join(':');const lists={room:d().rooms,person:d().people,plan:d().plans,hire:d().hires};const source=(lists[type]||[]).find(x=>x.id===ref);if(!source)return;const nodeId=type+':'+ref;if(nodes().some(x=>x.id===nodeId)){select(nodeId);return}snap();d().mapAutoPopulate=false;d().mapHiddenIds=d().mapHiddenIds.filter(x=>x!==nodeId);const n={id:nodeId,type,ref,label:source.name,x:(500-view.x)/view.z,y:(315-view.y)/view.z,color:colors[type],status:'Planejado',description:''};nodes().push(n);selected=n.id;save();render()}
+function updatePicker(){const field=$('mapLinkedSelect'),prior=field.value;field.replaceChildren();const empty=document.createElement('option');empty.value='';empty.textContent='Selecione um cadastro para incluir';field.appendChild(empty);for(const [type,list] of [['room',d().rooms],['person',d().people],['plan',d().plans],['hire',d().hires]])for(const obj of list||[]){if(nodes().some(n=>n.id===type+':'+obj.id))continue;const opt=document.createElement('option');opt.value=type+':'+obj.id;opt.textContent=names[type]+' · '+obj.name;field.appendChild(opt)}if([...field.options].some(o=>o.value===prior))field.value=prior}
 function rearrange(){if(!confirm('Reorganizar os nós? Suas anotações e conexões serão preservadas.'))return;snap();let i=0;nodes().forEach(n=>{if(n.type==='central'){n.x=500;n.y=310}else{const a=i++*2.4;n.x=500+(260+Math.floor(i/12)*140)*Math.cos(a);n.y=310+(210+Math.floor(i/12)*110)*Math.sin(a)}});save();render();fit()}
 function exportSVG(){const svg=$('strategySvg').cloneNode(true);svg.setAttribute('xmlns',NS);svg.setAttribute('viewBox','-600 -500 2200 1700');svg.setAttribute('width','1650');svg.setAttribute('height','1275');svg.querySelector('#mapWorld').setAttribute('transform','');const blob=new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='LX-Strategic-mapa.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 function init(config){if(api)return;api=config;initData();save();const surface=$('strategySvg');
@@ -86,6 +91,7 @@ function init(config){if(api)return;api=config;initData();save();const surface=$
  surface.addEventListener('pointercancel',()=>{if(drag?.moved)save();drag=null});
  surface.addEventListener('wheel',e=>{e.preventDefault();zoom(view.z*(e.deltaY<0?1.08:.92))},{passive:false});
  $('mapAddIdea').onclick=()=>make('idea');$('mapAddAction').onclick=()=>make('action');$('mapAddRisk').onclick=()=>make('risk');$('mapAddHire').onclick=()=>api.openNew('hire');
+ $('mapClear').onclick=clearMap;$('mapAddLinked').onclick=addLinked;
  $('mapConnect').onclick=()=>{if(!current()){alert('Selecione o primeiro nó.');return}connecting=selected;$('mapConnect').classList.add('primary');$('mapSaveState').textContent='Selecione outro nó para conectar'};
  $('mapZoomIn').onclick=()=>zoom(view.z*1.2);$('mapZoomOut').onclick=()=>zoom(view.z/1.2);$('mapFit').onclick=fit;
  $('mapUndo').onclick=undo;$('mapRedo').onclick=redo;$('mapRearrange').onclick=rearrange;$('mapExport').onclick=exportSVG;
@@ -96,5 +102,5 @@ function init(config){if(api)return;api=config;initData();save();const surface=$
  document.addEventListener('keydown',e=>{if(!document.getElementById('mapa').classList.contains('active')||e.target.closest('input,textarea,select'))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();if(e.shiftKey)redo();else undo()}if(e.key==='Escape'&&connecting){connecting='';$('mapConnect').classList.remove('primary')}});
  render();fit();
 }
-window.LXStrategicMap={init,render};
+window.LXStrategicMap={init,render,clearMap,deleteSelected,addLinked};
 })();
