@@ -1,8 +1,8 @@
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id),NS='http://www.w3.org/2000/svg';
-const colors={central:'#9b8dff',room:'#48c0e6',person:'#59dbad',plan:'#ffbf69',idea:'#b192ff',action:'#73b5ff',risk:'#f187a5'};
-const names={central:'Central',room:'Sala',person:'Profissional',plan:'Meta',idea:'Ideia',action:'Ação',risk:'Risco'};
+const colors={central:'#9b8dff',room:'#48c0e6',person:'#59dbad',plan:'#ffbf69',idea:'#b192ff',action:'#73b5ff',risk:'#f187a5',hire:'#f6cf70'};
+const names={central:'Central',room:'Sala',person:'Profissional',plan:'Meta',idea:'Ideia',action:'Ação',risk:'Risco',hire:'Contratação'};
 const gen=()=> 'm-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);
 const el=(tag,attrs,parent)=>{const n=document.createElementNS(NS,tag);Object.keys(attrs).forEach(k=>n.setAttribute(k,attrs[k]));parent.appendChild(n);return n};
 const short=(s,n=21)=>String(s||'').slice(0,n);
@@ -15,17 +15,19 @@ function initData(){
  const n=nodes(),e=edges(),live=new Set(['lx-root']);
  const add=(id,label,type,x,y,ref)=>{live.add(id);if(!n.some(a=>a.id===id))n.push({id,label,type,x,y,ref:ref||'',color:colors[type],description:'',status:'Planejado'})};
  add('lx-root','LX STRATEGIC','central',500,310,'');
- const rooms=d().rooms||[],plans=d().plans||[],people=d().people||[];
+ const rooms=d().rooms||[],plans=d().plans||[],people=d().people||[],hires=d().hires||[];
  rooms.forEach((a,i)=>{const rad=(i*2*Math.PI/Math.max(2,rooms.length))-Math.PI/2;add('room:'+a.id,a.name,'room',500+260*Math.cos(rad),310+190*Math.sin(rad),a.id)});
  plans.forEach((a,i)=>{const rad=(i*2*Math.PI/Math.max(3,plans.length))+Math.PI/3;add('plan:'+a.id,a.name,'plan',500+360*Math.cos(rad),310+240*Math.sin(rad),a.id)});
  people.forEach((a,i)=>{const par=n.find(v=>v.id==='room:'+a.roomId)||n[0];const rad=i*2.39996;add('person:'+a.id,a.name,'person',par.x+150*Math.cos(rad),par.y+125*Math.sin(rad),a.id)});
- const collections={room:rooms,plan:plans,person:people};
+ hires.forEach((a,i)=>{const par=n.find(v=>v.id==='room:'+a.roomId)||n[0];const rad=i*2.39996+.8;add('hire:'+a.id,a.name,'hire',par.x+220*Math.cos(rad),par.y+190*Math.sin(rad),a.id)});
+ const collections={room:rooms,plan:plans,person:people,hire:hires};
  for(let i=n.length-1;i>=0;i--){const x=n[i];if(x.ref&&!live.has(x.id)){n.splice(i,1);continue}if(x.ref){const r=collections[x.type]?.find(a=>a.id===x.ref);if(r)x.label=r.name}}
  const keys=new Set(e.map(x=>x.from+'>'+x.to));
  const link=(from,to)=>{if(!n.some(x=>x.id===from)||!n.some(x=>x.id===to))return;const key=from+'>'+to;if(!keys.has(key)){e.push({id:gen(),from,to});keys.add(key)}};
  rooms.forEach(x=>link('lx-root','room:'+x.id));
  plans.forEach(x=>link(x.roomId?'room:'+x.roomId:'lx-root','plan:'+x.id));
  people.forEach(x=>link(x.roomId?'room:'+x.roomId:'lx-root','person:'+x.id));
+ hires.forEach(x=>link(x.roomId?'room:'+x.roomId:'lx-root','hire:'+x.id));
  const valid=new Set(n.map(x=>x.id));d().mapEdges=e.filter(x=>valid.has(x.from)&&valid.has(x.to)&&x.from!==x.to);
 }
 function pt(evt){const r=$('strategySvg').getBoundingClientRect();return{x:(evt.clientX-r.left)/r.width*1000,y:(evt.clientY-r.top)/r.height*650}}
